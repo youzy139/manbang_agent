@@ -1,0 +1,249 @@
+{
+  "schema_fields": [
+    "activation_guard",
+    "cargo_avoidance",
+    "daily_continuous_rest_minutes",
+    "daily_order_limit",
+    "driving_limits",
+    "first_order_before",
+    "fixed_stationary_window",
+    "forbidden_hours",
+    "forbidden_zone",
+    "geo_boundary",
+    "home_event",
+    "known_locations",
+    "max_deadhead_km",
+    "max_haul_km",
+    "max_pickup_deadhead_km",
+    "monthly_kpi",
+    "monthly_long_haul_cap",
+    "monthly_rest_days",
+    "must_take",
+    "must_visit",
+    "preferred_order_regions",
+    "sequence_constraints",
+    "special_events"
+  ],
+  "global_populated": {
+    "first_order_before": 1,
+    "monthly_long_haul_cap": 0,
+    "monthly_rest_days": 6,
+    "sequence_constraints": 0,
+    "forbidden_hours": 4,
+    "driving_limits": 0,
+    "home_event": 1,
+    "max_pickup_deadhead_km": 0,
+    "daily_order_limit": 1,
+    "preferred_order_regions": 1,
+    "special_events": 1,
+    "must_visit": 0,
+    "max_haul_km": 1,
+    "fixed_stationary_window": 2,
+    "monthly_kpi": 0,
+    "max_deadhead_km": 0,
+    "daily_continuous_rest_minutes": 6,
+    "activation_guard": 0,
+    "must_take": 1,
+    "geo_boundary": 1,
+    "known_locations": 4,
+    "cargo_avoidance": 0,
+    "forbidden_zone": 1
+  },
+  "per_driver": {
+    "D001": {
+      "preferences_count": 3,
+      "populated_schema_fields": [
+        "daily_continuous_rest_minutes",
+        "geo_boundary"
+      ],
+      "mapped_to_parsedpreference": [
+        "daily_continuous_rest_minutes",
+        "geo_bbox",
+        "geo_boundary",
+        "raw_content",
+        "rest_continuous_hours"
+      ],
+      "unmapped": [],
+      "parsed_prefs_count": 2
+    },
+    "D002": {
+      "preferences_count": 3,
+      "populated_schema_fields": [
+        "daily_continuous_rest_minutes",
+        "monthly_rest_days"
+      ],
+      "mapped_to_parsedpreference": [
+        "daily_continuous_rest_minutes",
+        "monthly_rest_days",
+        "raw_content",
+        "rest_continuous_hours",
+        "rest_monthly_days"
+      ],
+      "unmapped": [],
+      "parsed_prefs_count": 2
+    },
+    "D003": {
+      "preferences_count": 3,
+      "populated_schema_fields": [
+        "forbidden_hours",
+        "forbidden_zone",
+        "known_locations"
+      ],
+      "mapped_to_parsedpreference": [
+        "forbidden_hours",
+        "forbidden_zone",
+        "geo_circle",
+        "raw_content"
+      ],
+      "unmapped": [],
+      "parsed_prefs_count": 2
+    },
+    "D004": {
+      "preferences_count": 3,
+      "populated_schema_fields": [
+        "daily_order_limit",
+        "first_order_before",
+        "fixed_stationary_window"
+      ],
+      "mapped_to_parsedpreference": [
+        "daily_order_limit",
+        "first_order_before",
+        "fixed_stationary_window",
+        "raw_content",
+        "rest_window_end_hour",
+        "rest_window_start_hour"
+      ],
+      "unmapped": [],
+      "parsed_prefs_count": 4
+    },
+    "D005": {
+      "preferences_count": 3,
+      "populated_schema_fields": [
+        "forbidden_hours"
+      ],
+      "mapped_to_parsedpreference": [
+        "forbidden_hours",
+        "raw_content"
+      ],
+      "unmapped": [],
+      "parsed_prefs_count": 1
+    },
+    "D006": {
+      "preferences_count": 4,
+      "populated_schema_fields": [
+        "daily_continuous_rest_minutes",
+        "monthly_rest_days"
+      ],
+      "mapped_to_parsedpreference": [
+        "daily_continuous_rest_minutes",
+        "monthly_rest_days",
+        "raw_content",
+        "rest_continuous_hours",
+        "rest_monthly_days"
+      ],
+      "unmapped": [],
+      "parsed_prefs_count": 2
+    },
+    "D007": {
+      "preferences_count": 4,
+      "populated_schema_fields": [
+        "forbidden_hours",
+        "max_haul_km",
+        "monthly_rest_days"
+      ],
+      "mapped_to_parsedpreference": [
+        "forbidden_hours",
+        "max_haul_km",
+        "monthly_rest_days",
+        "raw_content",
+        "rest_monthly_days"
+      ],
+      "unmapped": [],
+      "parsed_prefs_count": 3
+    },
+    "D008": {
+      "preferences_count": 4,
+      "populated_schema_fields": [
+        "daily_continuous_rest_minutes",
+        "monthly_rest_days"
+      ],
+      "mapped_to_parsedpreference": [
+        "daily_continuous_rest_minutes",
+        "monthly_rest_days",
+        "raw_content",
+        "rest_continuous_hours",
+        "rest_monthly_days"
+      ],
+      "unmapped": [],
+      "parsed_prefs_count": 2
+    },
+    "D009": {
+      "preferences_count": 3,
+      "populated_schema_fields": [
+        "forbidden_hours",
+        "known_locations",
+        "must_take"
+      ],
+      "mapped_to_parsedpreference": [
+        "forbidden_hours",
+        "must_take",
+        "raw_content"
+      ],
+      "unmapped": [],
+      "parsed_prefs_count": 2
+    },
+    "D010": {
+      "preferences_count": 4,
+      "populated_schema_fields": [
+        "daily_continuous_rest_minutes",
+        "home_event",
+        "known_locations"
+      ],
+      "mapped_to_parsedpreference": [
+        "daily_continuous_rest_minutes",
+        "home_event",
+        "raw_content",
+        "rest_continuous_hours"
+      ],
+      "unmapped": [],
+      "parsed_prefs_count": 2
+    },
+    "D011": {
+      "preferences_count": 5,
+      "populated_schema_fields": [
+        "daily_continuous_rest_minutes",
+        "monthly_rest_days"
+      ],
+      "mapped_to_parsedpreference": [
+        "daily_continuous_rest_minutes",
+        "monthly_rest_days",
+        "raw_content",
+        "rest_continuous_hours",
+        "rest_monthly_days"
+      ],
+      "unmapped": [],
+      "parsed_prefs_count": 2
+    },
+    "D012": {
+      "preferences_count": 7,
+      "populated_schema_fields": [
+        "fixed_stationary_window",
+        "known_locations",
+        "monthly_rest_days",
+        "preferred_order_regions",
+        "special_events"
+      ],
+      "mapped_to_parsedpreference": [
+        "fixed_stationary_window",
+        "monthly_rest_days",
+        "preferred_order_regions",
+        "raw_content",
+        "rest_monthly_days",
+        "rest_window_end_hour",
+        "special_events"
+      ],
+      "unmapped": [],
+      "parsed_prefs_count": 5
+    }
+  }
+}

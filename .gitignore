@@ -1,0 +1,16 @@
+# Python 缓存
+__pycache__/
+*.pyc
+
+# IDE
+.idea/
+.claude/
+
+# 赛方数据（体积大，不入库）
+demo/server/data/
+
+# 仿真运行产物
+demo/results/
+
+# 本地配置（含真实 API key，勿入库）
+demo/server/config/config.json
