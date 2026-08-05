@@ -102,6 +102,12 @@ class ParsedPreference:
     penalty_tiers: list[float] | None = None
     active_start_min: int | None = None
     active_end_min: int | None = None
+    # --- 事件触发型（黑盒复赛数据新形态）：带 "type":"事件触发型" + 结构化 "trigger" dict
+    # （如 {"event":"on_date","date":...,"reference_cargo":...,"return_within_days":7} 或
+    # {"event":"first_take_order_touch_city","city":"上海市"}）。此类偏好**不走 LLM 文本解析**
+    # （否则未触发就被当成立即生效的禁令），trigger 原样保留，由 event_watcher 确定性监听注入。
+    event_type: str | None = None
+    event_trigger: dict[str, Any] | None = None
     excluded_categories: list[str] = field(default_factory=list)
     required_categories: list[str] = field(default_factory=list)
     # City/address text constraints: if a cargo pickup or drop endpoint text
@@ -229,6 +235,26 @@ def preference_rewrite_only_enabled() -> bool:
     return os.environ.get("PREFERENCE_REWRITE_ONLY", "1").strip() in ("1", "true", "True", "yes", "on")
 
 
+def is_event_triggered_pref(p: Any) -> bool:
+    """事件触发型偏好判定：带结构化 ``trigger`` dict，或 ``type`` 标为"事件触发型"。"""
+    return isinstance(p, dict) and (
+        isinstance(p.get("trigger"), dict) or str(p.get("type") or "").strip() == "事件触发型"
+    )
+
+
+def _event_passthrough(p: dict[str, Any]) -> ParsedPreference:
+    """事件触发型偏好的确定性构造：跳过 LLM 文本解析（未触发不能被当成立即生效的约束），
+    trigger 结构原样保留在 event_trigger 槽，由 event_watcher 每步监听、触发后注入虚拟单。"""
+    return ParsedPreference(
+        raw_content=str(p.get("content", "") or ""),
+        penalty_amount=_coerce_float(p.get("penalty_amount"), 0.0),
+        penalty_cap=_coerce_float(p.get("penalty_cap"), None),
+        event_type=str(p.get("type") or "事件触发型"),
+        event_trigger=dict(p.get("trigger") or {}),
+        notes="event-triggered: deterministic watch by event_watcher, no LLM text parse",
+    )
+
+
 def parse_driver_preferences(
     api: SimulationApiPort,
     preferences: list[dict[str, Any]],
@@ -255,6 +281,9 @@ def parse_driver_preferences(
         rewrite_on = preference_rewrite_only_enabled()
         out: list[ParsedPreference] = []
         for p in preferences:
+            if is_event_triggered_pref(p):
+                out.append(_event_passthrough(p))
+                continue
             raw = str(p.get("content", "") or "")
             clarified = None
             if rewrite_on and raw.strip():
@@ -276,6 +305,9 @@ def parse_driver_preferences(
         return out
     out: list[ParsedPreference] = []
     for i, p in enumerate(preferences):
+        if is_event_triggered_pref(p):
+            out.append(_event_passthrough(p))
+            continue
         out.append(_parse_one_with_selfcheck(api, p, i, log))
     # Cross-preference review pass: a review LLM inspects every parsed result
     # together (original text + structured fields), flags the ones that look

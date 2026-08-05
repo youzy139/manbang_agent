@@ -17,6 +17,7 @@ from agent.driver_persona import DriverPersona
 from agent.llm_persona_extractor import LLMPersonaConfig
 from agent.loop import StrategyFieldEngine
 from agent import time_tools
+from agent import preference_parser
 
 
 class ModelDecisionService:
@@ -63,9 +64,12 @@ class ModelDecisionService:
             )
 
         cost_per_km = float(status.get("cost_per_km", 1.5))
+        # 事件触发型偏好不喂 persona LLM：trigger 结构 LLM 看不到，content 里"以后再也不碰X"类措辞
+        # 会被误解为从仿真起点生效的禁令。此类项由 event_watcher 确定性处理（见 _build_parsed_preferences）。
+        normal_prefs = [p for p in prefs if not preference_parser.is_event_triggered_pref(p)]
         persona = DriverPersona(
             driver_id,
-            prefs,
+            normal_prefs,
             cost_per_km=cost_per_km,
             llm_config=self._llm_config,
             chat_func=self._api.model_chat_completion,
@@ -81,13 +85,18 @@ class ModelDecisionService:
 
     @staticmethod
     def _prefs_fingerprint(prefs: list[Any]) -> str:
-        """偏好指纹：仅基于 content 文本，忽略元数据。"""
+        """偏好指纹：content 文本 + 事件触发型项的 type/trigger 结构（trigger 变也必须重建）。"""
         contents: list[str] = []
         for p in prefs:
             if isinstance(p, str):
                 contents.append(p)
             elif isinstance(p, dict):
-                contents.append(p.get("content") or p.get("text", "") or "")
+                c = p.get("content") or p.get("text", "") or ""
+                trig = p.get("trigger")
+                if isinstance(trig, dict) or p.get("type"):
+                    c += "|" + str(p.get("type") or "") + "|" + json.dumps(
+                        trig or {}, ensure_ascii=False, sort_keys=True)
+                contents.append(c)
         return json.dumps(contents, ensure_ascii=False, sort_keys=True)
 
     def _build_parsed_preferences(
@@ -95,13 +104,20 @@ class ModelDecisionService:
         driver_id: str,
         raw_prefs: list[dict[str, Any]],
     ) -> list[Any]:
-        """画像提取结果 -> ParsedPreference 列表（供 StrategyFieldEngine 消费）。"""
+        """画像提取结果 -> ParsedPreference 列表（供 StrategyFieldEngine 消费）。
+
+        事件触发型项（带 trigger 结构）分流：不走 persona LLM，确定性构造 ParsedPreference
+        （event_trigger 原样保留），由 loop 里的 event_watcher 监听触发。"""
         persona_obj = self._ensure_persona(driver_id)
         persona = persona_obj.to_dict(sparse=True) if hasattr(persona_obj, "to_dict") else {}
-        parsed = persona_to_parsed_preferences(raw_prefs, persona)
+        normal_raw = [p for p in raw_prefs if not preference_parser.is_event_triggered_pref(p)]
+        event_raw = [p for p in raw_prefs if preference_parser.is_event_triggered_pref(p)]
+        parsed = persona_to_parsed_preferences(normal_raw, persona)
+        for p in event_raw:
+            parsed.append(preference_parser._event_passthrough(p))
         self._logger.info(
-            "persona_adapter driver_id=%s raw_prefs=%s parsed=%s",
-            driver_id, len(raw_prefs), len(parsed),
+            "persona_adapter driver_id=%s raw_prefs=%s parsed=%s event_prefs=%s",
+            driver_id, len(raw_prefs), len(parsed), len(event_raw),
         )
         return parsed
 

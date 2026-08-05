@@ -26,7 +26,7 @@ from typing import Any
 from simkit.ports import SimulationApiPort
 from simkit.simulation_actions import distance_to_minutes, haversine_km
 
-from . import harness, preference_parser, time_tools, virtual_manager
+from . import event_watcher, harness, preference_parser, time_tools, virtual_manager
 from .cargo_graph import CargoGraph, sim_min_to_wall
 from .log_color import _clock, _line_end, _tag, _tokens, _total
 from .long_memory import LongMemory
@@ -314,6 +314,11 @@ class StrategyFieldEngine:
         reg: VirtualRegistry = st["registry"]
         reg.refresh(now_min=now_min)
 
+        # 事件触发型偏好（黑盒复赛新形态：带 type/trigger 结构）：确定性监听 on_date /
+        # first_take_order_touch_city，触发后幂等注入 deadhead+dwell combo / 禁令 modifier。
+        # 不靠 manager 自觉——skip-gate 会连续跳过，"首次接单触城"发生在任意一步。
+        event_watcher.ensure(st, ledger_facts, history, now_min, self._log)
+
         # ③④⑤ Virtual Manager → plan_route → harness（有界回环 + 确定性 skip-gate 省 token）
         sig = self._field_signature(st, now_min, pref_status, ledger_facts)
         manager_skipped = False
@@ -421,8 +426,10 @@ class StrategyFieldEngine:
     def _guard_pre_rest_wait(self, st, action, top, now_min: int) -> dict[str, Any]:
         """硬兜底：选中的真实 take_order 若其首跳完成时刻落进某 active/pending 休息窗(即跨窗作业)，
         改为 wait **一步等到窗起**(窗已开则等到窗尾)，**不设上限**(用户令)——绝不 30min 分段砍步。
-        窗口罚已在定价层 de-rank crosser；此层是『绝不穿窗』的确定性保证，覆盖 all-cross 被 least-bad 兜回的残留。"""
-        if action.get("action") != "take_order" or not top:
+        窗口罚已在定价层 de-rank crosser；此层是『绝不穿窗』的确定性保证，覆盖 all-cross 被 least-bad 兜回的残留。
+        虚拟 deadhead 的 reposition 同样不得穿窗（事件义务/热区赴点概不例外——它们几乎都宽限到窗后再去也来得及）。"""
+        act = action.get("action")
+        if act not in ("take_order", "reposition") or not top:
             return action
         reg: VirtualRegistry = st["registry"]
         rests = [v for v in reg.selectable(now_min=now_min) if v.get("kind") == REST]
@@ -438,7 +445,18 @@ class StrategyFieldEngine:
             return action
         hops = top.get("hops") or []
         first = hops[0] if hops and isinstance(hops[0], dict) else None
-        fm = first.get("finish_min") if isinstance(first, dict) else None
+        if act == "take_order":
+            fm = first.get("finish_min") if isinstance(first, dict) else None
+        else:
+            # reposition：单步直达，完成时刻 = now + 里程换算分钟（与 server 口径一致）
+            fm = None
+            pa = action.get("params") if isinstance(action.get("params"), dict) else {}
+            try:
+                if pos is not None and pa.get("latitude") is not None and pa.get("longitude") is not None:
+                    km = haversine_km(pos[0], pos[1], float(pa["latitude"]), float(pa["longitude"]))
+                    fm = int(now_min) + distance_to_minutes(km, self._speed)
+            except (TypeError, ValueError):
+                fm = None
         if fm is None:
             return action
         now, fm = int(now_min), int(fm)
@@ -449,6 +467,12 @@ class StrategyFieldEngine:
                 continue
             if now < int(we) and fm > ws:  # 该单执行区间跨越休息窗
                 # 窗未开(ws>now) → 一步等到窗起(下一步 rest 激活接管)；窗已开 → 一步等到窗尾。
+                if act == "reposition" and isinstance(first, dict):
+                    # _waypoint_action 发出 reposition 时即把虚拟 deadhead 标 consumed（单步直达语义）；
+                    # 本守卫 veto = 动作未实际执行 → 必须复活，否则义务凭空消失、combo 下游误解锁成死锁。
+                    cid0 = str(first.get("cargo_id") or "")
+                    if cid0.startswith(_WP_PREFIX):
+                        reg.unconsume(cid0[len(_WP_PREFIX):])
                 target = ws if ws > now else int(we)
                 wait_min = max(1, target - now)
                 self._log.warning("%s driver=%s 选中单跨休息窗(finish=%s,窗[%s,%s])→改 wait %s 等窗%s",
@@ -489,6 +513,8 @@ class StrategyFieldEngine:
             prog.append(("dm", int(_td.get("orders", 0) or 0), int(float(_td.get("gross", 0.0) or 0.0) // 500)))
         if dims.get("clock_rest"):          # 钟点休息安全网：在册 rest 被异常移除→present 翻 False→唤醒补注(否则整夜穿窗)
             prog.append(("rp", any(v.get("state") in ("active", "pending") and v.get("kind") == REST for v in reg.items)))
+        if dims.get("event"):               # 事件触发型：watcher fired/done/rev 位变化(触发/履约/重注瞬间)→唤醒 manager
+            prog.append(("ev", event_watcher.signature(st)))
         # **dud digest**（#8）：上一步哑火 modifier 的 (id, value_delta桶)（pool_hits=0 且 market>0）。
         # digest **变化**才改签名→唤醒 manager 修一次。带上 value_delta：manager 加码后该单仍 dud（力度还不够）→
         # value 变→digest 变→下一步**再次**唤醒可继续加码（避免"一次没修够就永久沉默");manager 停手(value 稳定)→
@@ -564,6 +590,7 @@ class StrategyFieldEngine:
                 # 绝不跨司机共享（无共享实例、无磁盘持久化池）。换司机=换一份全新记忆。
                 "long_memory": LongMemory(cost_per_km=DEFAULT_COST_PER_KM),
                 "registry": VirtualRegistry(),
+                "event_state": {},  # 事件触发型偏好 watcher 状态（event_watcher.ensure 每步维护）
                 "cargo_info_by_id": {},
                 "parsed_prefs": [],
                 "pref_sig": None,
@@ -573,7 +600,12 @@ class StrategyFieldEngine:
         return self._state[driver_id]
 
     def _maybe_init(self, st: dict[str, Any], raw_prefs: list[dict[str, Any]]) -> None:
-        sig = tuple(str(p.get("content", "")) for p in raw_prefs)
+        # 指纹含 type/trigger 结构：事件触发型偏好 trigger 变（content 不变）也必须重建解析
+        sig = tuple((str(p.get("content", "")), str(p.get("type") or ""),
+                     json.dumps(p.get("trigger") or {}, ensure_ascii=False, sort_keys=True)
+                     if isinstance(p.get("trigger"), dict) else "")
+                    if isinstance(p, dict) else (str(p), "", "")
+                    for p in raw_prefs)
         if st["pref_sig"] == sig:
             return
         try:
@@ -602,8 +634,11 @@ class StrategyFieldEngine:
             否则没有 rest 在册时 _guard_pre_rest_wait 无栅栏可拦、整夜穿窗(=本次 17 夜违规同形)。
         月度配额/长途cap/月度空驶 等**月度聚合不纳入**——无日内紧迫性(超额不罚、压低持久)，每个 day_part 复评足矣。"""
         dims = {"continuous_driving": False, "daily_drive": False, "sequence": False,
-                "daily_meter": False, "clock_rest": False}
+                "daily_meter": False, "clock_rest": False, "event": False}
         for p in parsed_prefs or []:
+            if getattr(p, "event_trigger", None):
+                # 事件触发型偏好：watcher 的 fired/done 位纳入签名——触发/履约瞬间唤醒 manager 编排路线
+                dims["event"] = True
             dl = getattr(p, "driving_limits", None)
             if isinstance(dl, dict):
                 if dl.get("max_continuous_drive_min"):
@@ -1404,6 +1439,10 @@ class StrategyFieldEngine:
                     "sim_min": int(now_min)},
             "pos": [pos[0], pos[1]],
             "pref_status": pref_status,
+            # 事件触发型偏好（带 trigger 结构）：trigger JSON + content 原文 + watcher 状态 + 在册注入单。
+            # 已知类型由 event_watcher 确定性注入（pref_keys 含 "evt:" 的单**不要 cancel**）；
+            # 未知 event 类型由你按 content 原话注对应虚拟单。
+            "event_preferences": event_watcher.context_view(st) or None,
             "ledger_facts": ledger_facts,
             "hot_zones": self._hot_zones(st, now_min),
             "virtuals": virtuals,

@@ -331,6 +331,16 @@ class VirtualRegistry:
                 return True
         return False
 
+    def unconsume(self, vid: str) -> bool:
+        """撤销误标的 consumed：虚拟 deadhead 是"发出 reposition 即 consumed"（单步直达语义），
+        若该动作随后被穿窗守卫 veto（实际未执行），必须复活回 active——否则义务凭空消失、
+        combo 下游（到点守候 rest）被误解锁。"""
+        for v in self.items:
+            if v.get("id") == vid and v.get("state") == CONSUMED:
+                v["state"] = ACTIVE
+                return True
+        return False
+
     def apply_patch(self, patch: dict[str, Any], *, now_min: int) -> dict[str, Any]:
         """应用 Virtual Manager 的 patch：{add:[spec...], cancel:[id...], update:[{id,...}...]}。
         返回操作统计，供日志/harness 复核。``no_change`` 不需动作。"""

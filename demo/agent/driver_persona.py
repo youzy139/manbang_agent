@@ -223,7 +223,13 @@ class DriverPersona:
                  chat_func: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
                  token_accumulator: dict[str, int] | None = None) -> None:
         self.driver_id = driver_id
-        self.raw_preferences = raw_preferences
+        # 防御性过滤：事件触发型偏好（带 trigger 结构）不进 persona LLM——trigger 模型看不到，
+        # content 里"触发后再也不…"类措辞会被误读成立即生效。由 event_watcher 确定性处理。
+        self.raw_preferences = [
+            p for p in raw_preferences
+            if not (isinstance(p, dict) and (isinstance(p.get("trigger"), dict)
+                                             or str(p.get("type") or "").strip() == "事件触发型"))
+        ]
         self.cost_per_km = float(cost_per_km)
         self._llm_config = llm_config
         self._chat_func = chat_func

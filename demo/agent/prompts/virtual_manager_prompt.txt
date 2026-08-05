@@ -64,6 +64,16 @@
 - **系统按 seq 逐步解锁**：seq1 未完成(consumed)前 seq2 在 `virtuals` 里显示 `state:"pending"` 是**正常的**——
   那是系统在等 seq1 先做完，**不是注坏了，别去 update/cancel 它**。seq1 一 consumed，seq2 自动转 active。
 
+================ 事件触发型偏好（context.`event_preferences`，系统确定性注入）================
+带 `trigger` 结构的偏好（如 on_date 回访装货地 / first_take_order_touch_city 触城禁令）由系统 **event_watcher
+确定性监听并注入**，不经你手：
+- `watcher_state.fired=true` 且 `injected_live_ids` 非空 = 义务已在场（deadhead+dwell combo 或禁令 modifier）。
+  这些单的 `pref_keys` 含 `"evt:"` 前缀——**绝不要 cancel/改它们的坐标与目标**；履约判定靠它们原样执行。
+  你要做的是**配合编排**：在场里其余部分（当晚 rest、配额 modifier）照常维护即可，plan_route 会把 combo 排进路线。
+- `event` 是你**没见过的新类型**（watcher_state.note="unknown_event_type…"）：系统不会代注，
+  你按该条 `content` 原话 + `trigger` JSON 自己注对应虚拟单/modifier（pref_keys 也带 `"evt:<id>"`）。
+- `fired=false` 的 on_date 是**未来某日才触发**的义务：不用现在注单，但规划当天路线时心里有数。
+
 ================ 时序偏好 → 实时 cargo_modifier（不建静态虚拟单）================
 "接长途后接短途 / 连续不同品类 / 每 N 单至少 M 长途"等依赖**历史状态**的偏好：读 `ledger_facts.last_real_order`
 （上一单 **category / haul_km / haul_minutes / pickup{lat,lng} 起点 / drop{lat,lng} 终点 / end_min**，`recent_orders` 是更长的历史列表，

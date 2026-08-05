@@ -30,6 +30,7 @@ manbang-V7/
 │  ├─ agent/                    # ★ 选手代码：决策 Agent（主要开发对象）
 │  │  ├─ model_decision_service.py   # 对外门面 ModelDecisionService（接口固定，server 按此类名加载）
 │  │  ├─ loop.py                     # StrategyFieldEngine：策略场引擎主循环（~1600 行，核心）
+│  │  ├─ event_watcher.py            # 事件触发型偏好监听器（确定性）：on_date 回访 / 触城禁令 → 注入 combo/modifier
 │  │  ├─ virtual_manager.py          # Virtual Manager LLM：输出 virtual patch 维护策略场
 │  │  ├─ virtual_registry.py         # 虚拟单注册表（rest / deadhead / cargo_modifier 三类）
 │  │  ├─ plan_route.py / path_planner.py / cargo_graph.py   # 多跳路线搜索与货源图
@@ -61,7 +62,9 @@ manbang-V7/
 
 **依赖方向（不可反向）**：`simkit` ← `agent` ← `server`。`agent` 只通过 `simkit.ports.SimulationApiPort` 与环境交互，不 import `server` 的任何模块。
 
-**Agent 决策架构**（`loop.py` 模块 docstring 有完整说明）：LLM **不直接输出动作**——Virtual Manager LLM 维护一张「策略场」（虚拟单 + 货源奖惩 patch），`plan_route` 在策略场中做**确定性多跳最优搜索**，执行最优路线的第一跳；`harness` 在执行前复核（失败时 fails-open 不阻断）。每步流程：获取新货源 → 记忆/账本更新 → Virtual Manager 维护虚拟单 → plan_route 生成候选 → harness 复核 → 执行 + 落账。
+**Agent 决策架构**（`loop.py` 模块 docstring 有完整说明）：LLM **不直接输出动作**——Virtual Manager LLM 维护一张「策略场」（虚拟单 + 货源奖惩 patch），`plan_route` 在策略场中做**确定性多跳最优搜索**，执行最优路线的第一跳；`harness` 在执行前复核（失败时 fails-open 不阻断）。每步流程：获取新货源 → 记忆/账本更新 → **event_watcher 确定性监听事件触发型偏好** → Virtual Manager 维护虚拟单 → plan_route 生成候选 → harness 复核 → 执行 + 落账。
+
+**事件触发型偏好**（复赛黑盒数据新形态）：偏好项可带 `"type":"事件触发型"` + 结构化 `trigger` dict（如 `on_date` 限期回访装货地、`first_take_order_touch_city` 触城后禁令）。这类项**不走 persona LLM 文本解析**（防止未触发就被当成立即生效的禁令），`trigger` 原样保留在 `ParsedPreference.event_trigger`，由 `event_watcher.py` 每步确定性检测触发、幂等注入现成虚拟单（deadhead+rest combo / region modifier）；未知 event 类型经 manager context 的 `event_preferences` 段交 LLM 按原文处理。
 
 **注意——未接线的遗留模块**：`agent/cargo_memory.py`、`agent/market_memory.py`、`agent/memory_tracker.py` 当前**没有任何模块 import 它们**（属于早期方案遗留；`思路.md` 中有基于 market_memory 的调优设想）。`agent/preference_llm.py` 引用的 `prompts/preference_llm_prompt.txt` 与 `harness.py` 引用的 `prompts/harness_review_prompt.txt` 在 `prompts/` 目录中**不存在**（相关代码均做了缺失容错）。改动前先确认模块是否真的在调用链上。
 
